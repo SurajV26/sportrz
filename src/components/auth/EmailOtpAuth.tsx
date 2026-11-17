@@ -10,10 +10,18 @@ import {
   LoaderCircle,
   LockKeyhole,
   Mail,
+  KeyRound,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+
+const QA_TEST_ACCOUNTS = [
+  { label: 'Super Admin', username: 'superadmin', note: 'Full administration access' },
+  { label: 'Sub Admin', username: 'subadmin', note: 'Restricted read-only access' },
+  { label: 'Test User', username: 'testuser', note: 'Standard customer account' },
+  { label: 'Affiliate', username: 'affiliate', note: 'Affiliate dashboard and commission testing' },
+] as const;
 
 export default function EmailOtpAuth() {
   const [email, setEmail] = useState('');
@@ -25,7 +33,13 @@ export default function EmailOtpAuth() {
   const [resendSeconds, setResendSeconds] = useState(0);
   const [referralCode, setReferralCode] = useState('');
   const [referralClickId, setReferralClickId] = useState('');
-  const { requestLoginOtp, verifyLoginOtp, currentUser, loading: authLoading } = useAuth();
+  const [authMode, setAuthMode] = useState<'otp' | 'password'>('otp');
+  const [liveTestLoginEnabled, setLiveTestLoginEnabled] = useState(false);
+  const [testUsername, setTestUsername] = useState('');
+  const [testPassword, setTestPassword] = useState('');
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const canUseTestLogin = liveTestLoginEnabled;
+  const { requestLoginOtp, verifyLoginOtp, loginWithPassword, currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -33,6 +47,15 @@ export default function EmailOtpAuth() {
     if (/^[A-Z0-9-]{3,32}$/i.test(value)) setReferralCode(value.toUpperCase());
     const clickId = new URLSearchParams(window.location.search).get('click_id') || '';
     if (/^[A-Za-z0-9._~-]{1,191}$/.test(clickId)) setReferralClickId(clickId);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/auth/test-login-config', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : { enabled: false })
+      .then((data) => { if (active) setLiveTestLoginEnabled(Boolean(data.enabled)); })
+      .catch(() => { if (active) setLiveTestLoginEnabled(false); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -77,6 +100,29 @@ export default function EmailOtpAuth() {
       const typedError = requestError as Error & { retryAfterSeconds?: number };
       setError(typedError.message || 'We could not send your code. Please try again.');
       if (typedError.retryAfterSeconds) setResendSeconds(typedError.retryAfterSeconds);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signInWithTestAccount = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!canUseTestLogin) return;
+    if (!testUsername.trim() || !testPassword) {
+      setError('Choose a test account and enter its password.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    setNotice('');
+    try {
+      await loginWithPassword(testUsername.trim(), testPassword);
+      const requested = new URLSearchParams(window.location.search).get('next') || '/';
+      const safeNext = requested.startsWith('/') && !requested.startsWith('//') ? requested : '/';
+      router.replace(safeNext);
+      router.refresh();
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Unable to sign in with this test account.');
     } finally {
       setLoading(false);
     }
@@ -137,29 +183,29 @@ export default function EmailOtpAuth() {
 
           <div className="relative py-10">
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold tracking-wide backdrop-blur">
-              <Sparkles className="h-3.5 w-3.5" /> PASSWORD-FREE ACCESS
+              <Sparkles className="h-3.5 w-3.5" /> {authMode === 'password' ? (isDevelopment ? 'LOCAL TEST ACCESS' : 'LIVE QA ACCESS') : 'PASSWORD-FREE ACCESS'}
             </div>
-            <h2 className="max-w-sm text-4xl font-black leading-[1.08] tracking-tight">One email.<br />A whole lot of play.</h2>
+            <h2 className="max-w-sm text-4xl font-black leading-[1.08] tracking-tight">{authMode === 'password' ? <>Four test roles.<br />One QA setup.</> : <>One email.<br />A whole lot of play.</>}</h2>
             <p className="mt-5 max-w-sm text-sm leading-7 text-white/80">
-              Enter your email, verify one secure code, and jump straight into your games. No password to remember.
+              {authMode === 'password' ? 'Use your private QA usernames and passwords to test Super Admin, Sub Admin, User, and Affiliate roles without requesting OTPs. Normal customers still use email OTP.' : 'Enter your email, verify one secure code, and jump straight into your games. No password to remember.'}
             </p>
 
             <div className="mt-8 grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
                 <Gamepad2 className="mb-3 h-6 w-6" />
-                <div className="text-sm font-bold">Pick up and play</div>
-                <div className="mt-1 text-xs text-white/70">Games in one place</div>
+                <div className="text-sm font-bold">{authMode === 'password' ? 'Role testing' : 'Pick up and play'}</div>
+                <div className="mt-1 text-xs text-white/70">{authMode === 'password' ? 'Four fixed QA accounts' : 'Games in one place'}</div>
               </div>
               <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
                 <ShieldCheck className="mb-3 h-6 w-6" />
-                <div className="text-sm font-bold">Secure by code</div>
-                <div className="mt-1 text-xs text-white/70">One-time email OTP</div>
+                <div className="text-sm font-bold">{authMode === 'password' ? 'QA only' : 'Secure by code'}</div>
+                <div className="mt-1 text-xs text-white/70">{authMode === 'password' ? 'Restricted to test identities' : 'One-time email OTP'}</div>
               </div>
             </div>
           </div>
 
           <div className="relative flex items-center gap-2 text-xs text-white/70">
-            <LockKeyhole className="h-4 w-4" /> Your code is private and expires in 10 minutes.
+            <LockKeyhole className="h-4 w-4" /> {authMode === 'password' ? 'QA sign-in is available only when explicitly enabled by the site administrator.' : 'Your code is private and expires in 10 minutes.'}
           </div>
         </aside>
 
@@ -175,18 +221,20 @@ export default function EmailOtpAuth() {
           </div>
 
           <div className="mb-7">
-            <div className="mb-5 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-              <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === 'email' ? 'bg-orange-600 text-white' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'}`}>{step === 'email' ? '1' : <CheckCircle2 className="h-4 w-4" />}</span>
-              <span className={step === 'email' ? 'text-slate-800 dark:text-white' : ''}>Email</span>
-              <span className="mx-1 h-px w-8 bg-slate-200 dark:bg-slate-700" />
-              <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === 'otp' ? 'bg-orange-600 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>2</span>
-              <span className={step === 'otp' ? 'text-slate-800 dark:text-white' : ''}>Verify</span>
-            </div>
+            {authMode === 'otp' && (
+              <div className="mb-5 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === 'email' ? 'bg-orange-600 text-white' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'}`}>{step === 'email' ? '1' : <CheckCircle2 className="h-4 w-4" />}</span>
+                <span className={step === 'email' ? 'text-slate-800 dark:text-white' : ''}>Email</span>
+                <span className="mx-1 h-px w-8 bg-slate-200 dark:bg-slate-700" />
+                <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === 'otp' ? 'bg-orange-600 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>2</span>
+                <span className={step === 'otp' ? 'text-slate-800 dark:text-white' : ''}>Verify</span>
+              </div>
+            )}
             <h1 className="text-3xl font-black tracking-tight text-slate-950 dark:text-white sm:text-[34px]">
-              {step === 'email' ? 'Let’s get you playing.' : 'Check your inbox.'}
+              {authMode === 'password' ? (isDevelopment ? 'Local test account sign-in' : 'Live QA account sign-in') : step === 'email' ? 'Let’s get you playing.' : 'Check your inbox.'}
             </h1>
             <p className="mt-3 max-w-md text-sm leading-6 text-slate-600 dark:text-slate-300">
-              {step === 'email' ? (
+              {authMode === 'password' ? 'Select a QA role, enter the private password configured by your administrator, and sign in without OTP. Normal customer registration and OTP login remain unchanged.' : step === 'email' ? (
                 'Enter your email and we’ll send a 6-digit code. New to Sportrz? Your account will be created automatically after you verify it.'
               ) : (
                 <>We sent a one-time code to <span className="font-semibold text-slate-900 dark:text-white">{email}</span>. Enter it below to continue.</>
@@ -206,7 +254,39 @@ export default function EmailOtpAuth() {
             </div>
           )}
 
-          {step === 'email' ? (
+          {authMode === 'password' && canUseTestLogin ? (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {QA_TEST_ACCOUNTS.map((account) => (
+                  <button
+                    key={account.username}
+                    type="button"
+                    onClick={() => { setTestUsername(account.username); setTestPassword(''); setError(''); }}
+                    className={`rounded-xl border p-3 text-left transition ${testUsername === account.username ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/15 dark:bg-orange-950/20' : 'border-slate-200 bg-white hover:border-orange-300 dark:border-slate-700 dark:bg-slate-800'}`}
+                  >
+                    <span className="block text-sm font-bold text-slate-900 dark:text-white">{account.label}</span>
+                    <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{account.note}</span>
+                    <span className="mt-2 block font-mono text-xs text-orange-700 dark:text-orange-300">{account.username}</span>
+                  </button>
+                ))}
+              </div>
+              <form onSubmit={signInWithTestAccount} className="space-y-4">
+                <div>
+                  <label htmlFor="test-username" className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">Username</label>
+                  <input id="test-username" name="username" autoComplete="username" required value={testUsername} onChange={(event) => setTestUsername(event.target.value)} placeholder="superadmin" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:bg-white focus:ring-4 focus:ring-orange-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                </div>
+                <div>
+                  <label htmlFor="test-password" className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">Password</label>
+                  <input id="test-password" name="password" type="password" autoComplete="current-password" required value={testPassword} onChange={(event) => setTestPassword(event.target.value)} placeholder="Enter test account password" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:bg-white focus:ring-4 focus:ring-orange-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                </div>
+                <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#ff5526] to-[#ed3424] px-4 py-4 font-bold text-white shadow-lg shadow-orange-600/20 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60">
+                  {loading ? <><LoaderCircle className="h-5 w-5 animate-spin" /> Signing in…</> : <><KeyRound className="h-5 w-5" /> Sign in to test account</>}
+                </button>
+              </form>
+              <button type="button" onClick={() => { setAuthMode('otp'); setError(''); }} className="w-full text-sm font-semibold text-orange-700 hover:text-orange-800 dark:text-orange-400">Back to normal email OTP sign-in</button>
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-300">Private QA accounts only. Use the usernames and passwords configured by the Sportrz administrator. Do not share these credentials. Real customer sign-in continues to use email OTP.</p>
+            </div>
+          ) : authMode === 'otp' && step === 'email' ? (
             <form onSubmit={sendCode} className="space-y-5">
               <div>
                 <label htmlFor="auth-email" className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">Email address</label>
@@ -270,6 +350,15 @@ export default function EmailOtpAuth() {
                 </button>
               </div>
             </form>
+          )}
+
+          {canUseTestLogin && authMode === 'otp' && (
+            <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-3 text-center dark:border-slate-700">
+              <p className="text-xs text-slate-500 dark:text-slate-400">{isDevelopment ? 'Developer testing' : 'Private QA testing'}</p>
+              <button type="button" onClick={() => { setAuthMode('password'); setError(''); setNotice(''); }} className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-orange-700 hover:text-orange-800 dark:text-orange-400">
+                <KeyRound className="h-4 w-4" /> Sign in with a fixed QA account
+              </button>
+            </div>
           )}
 
           <div className="mt-8 border-t border-slate-100 pt-5 text-center text-xs leading-5 text-slate-500 dark:border-slate-800 dark:text-slate-400">

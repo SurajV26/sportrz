@@ -11,7 +11,11 @@
     "db:check": "node scripts/check-db.js",
     "db:import-games": "node upload-games.js",
     "db:migrate:admin": "node scripts/migrate-admin.js",
-    "db:migrate:fresh": "node scripts/migrate-fresh.js"
+    "db:migrate:fresh": "node scripts/migrate-fresh.js",
+    "db:seed:test-accounts": "node scripts/seed-test-accounts.js",
+    "db:setup:test-accounts": "npm run db:migrate:admin && npm run db:seed:test-accounts",
+    "db:seed:live-test-accounts": "node scripts/seed-live-test-accounts.js",
+    "db:setup:live-test-accounts": "npm run db:migrate:admin && npm run db:seed:live-test-accounts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

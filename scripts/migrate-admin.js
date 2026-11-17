@@ -6,8 +6,13 @@ const dotenv = require('dotenv');
 const mysql = require('mysql2/promise');
 
 const projectRoot = process.cwd();
-dotenv.config({ path: path.join(projectRoot, '.env.local') });
-dotenv.config({ path: path.join(projectRoot, '.env') });
+const explicitEnvFile = process.env.SPORTRZ_ENV_FILE;
+if (explicitEnvFile) {
+  dotenv.config({ path: path.resolve(projectRoot, explicitEnvFile), override: true });
+} else {
+  dotenv.config({ path: path.join(projectRoot, '.env.local') });
+  dotenv.config({ path: path.join(projectRoot, '.env') });
+}
 
 async function main() {
   const migrationPaths = [
@@ -16,6 +21,8 @@ async function main() {
     path.join(projectRoot, 'database', 'migrations', '20261109_affiliate_postback_and_ledger.sql'),
     path.join(projectRoot, 'database', 'migrations', '20261110_affiliate_click_tracking_s2s_admin.sql'),
     path.join(projectRoot, 'database', 'migrations', '20261113_affiliate_commission_models.sql'),
+    path.join(projectRoot, 'database', 'migrations', '20261113_affiliate_click_fraud_protection.sql'),
+    path.join(projectRoot, 'database', 'migrations', '20261113_live_qa_accounts.sql'),
   ];
   for (const migrationPath of migrationPaths) {
     if (!fs.existsSync(migrationPath)) throw new Error(`Migration file not found: ${migrationPath}`);
@@ -55,12 +62,12 @@ async function main() {
   try {
     const connection = await pool.getConnection();
     try {
-      console.log(`Applying admin, affiliate, click-tracking, and S2S postback migrations to ${databaseOptions.database}…`);
+      console.log(`Applying admin, affiliate, click-tracking, S2S postback, and click-fraud migrations to ${databaseOptions.database}…`);
       for (const migrationPath of migrationPaths) {
         console.log(`Applying ${path.basename(migrationPath)}…`);
         await connection.query(fs.readFileSync(migrationPath, 'utf8'));
       }
-      console.log('Admin, affiliate, click-tracking, and S2S postback migrations completed.');
+      console.log('Admin, affiliate, click-tracking, S2S postback, and click-fraud migrations completed.');
     } finally {
       connection.release();
     }

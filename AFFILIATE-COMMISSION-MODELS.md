@@ -24,7 +24,9 @@ This project supports two administrator-controlled earning models. An affiliate 
 
 ## Valid-click policy and fraud limitations
 
-The current first-party policy uses an HTTP-only random browser cookie, a per-affiliate/per-UTC-day unique billable key, and a user-agent exclusion list for common bots and link-preview services. This reduces repeat-click and obvious crawler abuse, but it is not a guarantee against sophisticated fraud, cookie clearing, device switching, VPNs or headless browsers. Before running a large paid traffic campaign, add operational review thresholds and monitor unusual click bursts/conversion patterns.
+The first-party policy uses an HTTP-only random browser cookie, a per-affiliate/per-UTC-day unique visitor key, and a second privacy-preserving HMAC fingerprint based on trusted client IP + user-agent. The second key stops a visitor from obtaining extra daily rewards just by opening new Incognito windows or clearing cookies on the same network/device/browser. Raw IP addresses and raw user-agent values are not stored. Common bots, link previews, monitoring agents, and an affiliate's own authenticated clicks are not billable. Duplicate attempts remain analytics records with a risk reason and no commission.
+
+This is abuse reduction, not perfect human identity verification. VPN/IP rotation, device changes, mobile-network changes, headless-browser evasion, and multiple real users behind the same public IP + user-agent can still affect matching. Keep CPC rewards Pending until reviewed/approved and monitor click bursts. Configure trusted proxy IP headers in production and keep `AFFILIATE_FRAUD_SALT` stable and private. See `docs/LOCAL-TEST-ACCOUNTS.md` for local CPC testing notes.
 
 ## Admin workflow
 

@@ -10,6 +10,7 @@ interface AuthContextType {
   loading: boolean;
   requestLoginOtp: (email: string) => Promise<{ message: string; retryAfterSeconds: number }>;
   verifyLoginOtp: (email: string, otp: string, referralCode?: string, clickId?: string) => Promise<{ isNewUser: boolean }>;
+  loginWithPassword: (usernameOrEmail: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   resendVerificationEmail: (email?: string) => Promise<string | null>;
   resetPassword: (email: string) => Promise<string | null>;
@@ -88,6 +89,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { isNewUser: Boolean(data.isNewUser) };
   };
 
+  const loginWithPassword = async (usernameOrEmail: string, password: string) => {
+    const identifier = usernameOrEmail.trim();
+    const payload = identifier.includes('@')
+      ? { email: identifier.toLowerCase(), password }
+      : { username: identifier.toLowerCase(), password };
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await readApiResponse(response);
+    await refreshUser();
+    showToast(data.message || 'Signed in successfully.', 'success', 4000);
+  };
+
   const logout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
@@ -131,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     requestLoginOtp,
     verifyLoginOtp,
+    loginWithPassword,
     logout,
     resendVerificationEmail,
     resetPassword,

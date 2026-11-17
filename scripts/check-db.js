@@ -69,6 +69,8 @@ async function main() {
       ['affiliate_profiles', 'postback_url'],
       ['affiliate_profiles', 'postback_method'],
       ['affiliate_referrals', 'click_id'],
+      ['affiliate_clicks', 'network_key'],
+      ['affiliate_clicks', 'risk_reason'],
       ['affiliate_postback_deliveries', 'http_method'],
     ];
     const missingColumns = [];
@@ -83,7 +85,7 @@ async function main() {
       if (missingAdmin.length) console.log('Missing admin tables:', missingAdmin.join(', '));
       if (missingColumns.length) console.log('Missing columns:', missingColumns.join(', '));
     } else {
-      console.log('Admin, affiliate, first-party Click ID, and S2S postback schema verified.');
+      console.log('Admin, affiliate, first-party Click ID, S2S postback, and click-fraud schema verified.');
     }
     const [counts] = await connection.query('SELECT (SELECT COUNT(*) FROM games) AS games, (SELECT COUNT(*) FROM categories WHERE is_active = 1) AS categories');
     console.log('Existing catalog:', counts[0]);

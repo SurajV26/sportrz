@@ -51,7 +51,8 @@ Open `http://localhost:3000`.
 | `npm run build` | Create a production build |
 | `npm run start` | Start the production server after a successful build |
 | `npm run db:check` | Verify the MySQL connection and required tables/columns |
-| `npm run db:migrate:admin` | Apply safe, additive admin, affiliate, click-tracking, and S2S migrations |
+| `npm run db:migrate:admin` | Apply safe, additive admin, affiliate, click-tracking, S2S, and CPC fraud-protection migrations |
+| `npm run db:setup:test-accounts` | Apply migrations and seed four guarded local-only Super Admin, Sub Admin, User, and Affiliate accounts |
 | `npm run db:migrate:fresh` | **Destructive:** drop and recreate every table, then leave all tables empty |
 
 > Do not run `npm run db:migrate:fresh` for a normal update. It permanently deletes users, admins, games, plans, payments, subscriptions, affiliate records, settings, and logs in the configured database. Back up the database before any intentional reset.
@@ -76,3 +77,11 @@ See [`docs/affiliate-postback-integration.md`](docs/affiliate-postback-integrati
 - Configure SMTP for email OTP.
 - Run `npm run db:migrate:admin`, `npm run db:check`, `npm run typecheck`, and `npm run build` before deployment.
 - Never use test Webhook.site URLs as production conversion destinations.
+
+## Local testing accounts
+
+For the four guarded local test roles (Super Admin, Sub Admin, User, Affiliate), see [`docs/LOCAL-TEST-ACCOUNTS.md`](docs/LOCAL-TEST-ACCOUNTS.md). They are opt-in, local-database-only, and never intended for production.
+
+## Deployed QA testing
+
+For fixed username/password QA accounts on a deployed QA/staging site, follow [`docs/LIVE-QA-ACCOUNTS.md`](docs/LIVE-QA-ACCOUNTS.md). The same `ENABLE_DEV_TEST_ACCOUNTS=true/false` switch controls QA login locally and on the deployed site. QA test sessions do not have a fixed 30-day application expiry; the persistent cookie is renewed when the session is checked. Keep QA accounts off the public production database when possible.
