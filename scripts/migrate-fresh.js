@@ -27,6 +27,8 @@ async function main() {
     path.join(projectRoot, 'database', 'migrations', '20261109_affiliate_postback_and_ledger.sql'),
     path.join(projectRoot, 'database', 'migrations', '20261110_affiliate_click_tracking_s2s_admin.sql'),
     path.join(projectRoot, 'database', 'migrations', '20261113_affiliate_commission_models.sql'),
+    path.join(projectRoot, 'database', 'migrations', '20261113_affiliate_click_fraud_protection.sql'),
+    path.join(projectRoot, 'database', 'migrations', '20261113_live_qa_accounts.sql'),
   ];
 
   if (!fs.existsSync(schemaPath)) throw new Error(`Base schema file not found: ${schemaPath}`);

@@ -1,20 +1,13 @@
-/** Canonical URL helpers for affiliate links.
- * Every public affiliate URL goes through /r/:code so Sportrz can create and
- * persist a first-party Click ID before sending the visitor to login.
+/** Canonical URL helpers for affiliate links. */
+import { getAppOrigin } from '@/lib/app-origin';
+
+/**
+ * Build all public affiliate URLs from the server-side application origin.
+ * APP_URL is preferred at runtime so a stale public build-time variable cannot
+ * make a production link point back to localhost.
  */
 export function getPublicAppOrigin(): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  const fallback = process.env.NODE_ENV === 'production' ? 'https://sportrz.com' : 'http://localhost:3000';
-  const candidate = configured || fallback;
-
-  try {
-    const parsed = new URL(candidate);
-    if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password) return fallback;
-    if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') return fallback;
-    return parsed.origin;
-  } catch {
-    return fallback;
-  }
+  return getAppOrigin();
 }
 
 export function buildAffiliateReferralUrl(referralCode: string): string {

@@ -1056,7 +1056,7 @@ export default function AdminPanel() {
           </span>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-[1180px] w-full text-left text-sm">
+          <table className="min-w-[1280px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-5 py-3">User</th>
@@ -1494,7 +1494,7 @@ export default function AdminPanel() {
             ) : (
               <>
                 <p className="font-semibold">How pay-per-click works</p>
-                <p className="mt-1 text-xs leading-5">A fixed rupee reward is paid per valid unique click, not a percentage of clicks. Example: 100 valid clicks × ₹{Number(staffForm.clickRewardRupees || 0).toFixed(2)} = ₹{(100 * Number(staffForm.clickRewardRupees || 0)).toFixed(2)}. Sportrz pays only the first click per browser, per affiliate, per UTC day; repeat visits are analytics-only.</p>
+                <p className="mt-1 text-xs leading-5">A fixed rupee reward is paid per valid unique click, not a percentage of clicks. Example: 100 valid clicks × ₹{Number(staffForm.clickRewardRupees || 0).toFixed(2)} = ₹{(100 * Number(staffForm.clickRewardRupees || 0)).toFixed(2)}. Sportrz pays at most once per affiliate per UTC day for the same browser visitor or matching network + browser signature. New Incognito windows on the same device/network are not extra billable clicks.</p>
               </>
             )}
             <p className="mt-2 text-xs font-medium">The affiliate cannot change this model or rate. Only an authorized admin can edit it.</p>
@@ -1875,7 +1875,7 @@ export default function AdminPanel() {
               <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs leading-5 text-blue-950">
                 {(editingStaff.editCommissionModel ?? editingStaff.commissionModel ?? "plan_purchase") === "plan_purchase"
                   ? `Example: a ₹1,000 captured plan at ${Number(editingStaff.editCommission ?? editingStaff.commissionPercent ?? 10)}% earns ${money(1000 * Number(editingStaff.editCommission ?? editingStaff.commissionPercent ?? 10) / 100)}. No commission is paid for a click alone.`
-                  : `Example: ${money(Number(editingStaff.editClickReward ?? editingStaff.clickReward ?? 1))} × 100 valid unique clicks = ${money(Number(editingStaff.editClickReward ?? editingStaff.clickReward ?? 1) * 100)}. Repeat visits from the same browser are not paid twice on the same UTC day.`}
+                  : `Example: ${money(Number(editingStaff.editClickReward ?? editingStaff.clickReward ?? 1))} × 100 valid unique clicks = ${money(Number(editingStaff.editClickReward ?? editingStaff.clickReward ?? 1) * 100)}. A matching network + browser signature is also deduplicated across new Incognito windows on the same UTC day.`}
                 <span className="mt-1 block font-semibold">Only admins can change the earning model and rate. Previously earned ledger entries are preserved when the model changes.</span>
               </div>
               </>
@@ -1927,7 +1927,7 @@ export default function AdminPanel() {
             </div>
             <p className="mt-1 text-xs leading-5 text-slate-500">
               {(myAffiliate?.commission_model || myAffiliate?.commissionModel) === "pay_per_click"
-                ? "Paid on eligible unique clicks. Repeat visits from the same browser are not paid again that day."
+                ? "Paid on eligible unique clicks. Repeated visits and new Incognito windows with the same network + browser signature are not paid again that UTC day."
                 : "Paid only after a referred customer's eligible plan payment is successfully captured."}
             </p>
           </div>
@@ -1972,7 +1972,7 @@ export default function AdminPanel() {
           <p className="mt-2 text-xs leading-5 text-orange-900/80">
             Share this link on your approved website. Sportrz creates and records the Click ID automatically; you do not need to edit the link or add tracking code.
             {(myAffiliate?.commission_model || myAffiliate?.commissionModel) === "pay_per_click"
-              ? ` Your current earning rule is ${money(Number(myAffiliate?.click_reward_paise ?? Number(myAffiliate?.clickReward || 0) * 100) / 100)} for each valid unique click. Only the first click from the same browser for this affiliate in a UTC day is billable; repeat visits remain analytics-only.`
+              ? ` Your current earning rule is ${money(Number(myAffiliate?.click_reward_paise ?? Number(myAffiliate?.clickReward || 0) * 100) / 100)} for each valid unique click. Only one click per affiliate per UTC day is billable for the same browser visitor or matching network + browser signature. New Incognito windows on the same device/network remain analytics-only.`
               : ` Your current earning rule is ${Number(myAffiliate?.commission_percent || 0)}% of eligible plan payments after Razorpay confirms capture.`}
           </p>
           <button
@@ -2382,7 +2382,7 @@ export default function AdminPanel() {
                 ) : (
                   <>
                     <p className="font-semibold">Pay-per-click example</p>
-                    <p className="mt-1 text-xs leading-5">100 valid unique clicks × {money(Number(applicationApprovalForm.clickRewardRupees || 0))} = {money(100 * Number(applicationApprovalForm.clickRewardRupees || 0))}. This is a fixed amount per valid click, not a percentage. Repeat visits from the same browser to this affiliate on the same UTC day are not paid again.</p>
+                    <p className="mt-1 text-xs leading-5">100 valid unique clicks × {money(Number(applicationApprovalForm.clickRewardRupees || 0))} = {money(100 * Number(applicationApprovalForm.clickRewardRupees || 0))}. This is a fixed amount per valid click, not a percentage. Repeated visits from the same browser or matching network + browser signature (including new Incognito windows on the same device/network) are not paid again that UTC day.</p>
                   </>
                 )}
                 <p className="mt-2 text-xs font-semibold">The affiliate cannot change this earning model or rate. They only see the model selected here.</p>
@@ -2395,7 +2395,7 @@ export default function AdminPanel() {
           </div>
         )}
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-          <table className="min-w-[1180px] w-full text-left text-sm">
+          <table className="min-w-[1280px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-5 py-3">Affiliate</th>
@@ -2403,6 +2403,7 @@ export default function AdminPanel() {
                 <th className="px-5 py-3">Earning model / rate</th>
                 <th className="px-5 py-3">Visits</th>
                 <th className="px-5 py-3">Valid clicks</th>
+                <th className="px-5 py-3" title="Duplicate, automated, self, or otherwise non-billable tracking attempts. These do not earn commission.">Filtered clicks</th>
                 <th className="px-5 py-3">Referrals</th>
                 <th className="px-5 py-3">Conversions</th>
                 <th className="px-5 py-3">Commission</th>
@@ -2462,6 +2463,7 @@ export default function AdminPanel() {
                   </td>
                   <td className="px-5 py-4">{Number(a.clickCount || 0).toLocaleString("en-IN")}</td>
                   <td className="px-5 py-4">{Number(a.billableClickCount || 0).toLocaleString("en-IN")}</td>
+                  <td className="px-5 py-4" title="Non-billable attempts, including duplicate and automated traffic">{Number(a.nonBillableClickCount || 0).toLocaleString("en-IN")}</td>
                   <td className="px-5 py-4">{a.referralCount}</td>
                   <td className="px-5 py-4">
                     <div className="font-semibold">{Number(a.convertedCount || 0).toLocaleString("en-IN")}</div>

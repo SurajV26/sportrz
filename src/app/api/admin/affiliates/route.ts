@@ -196,7 +196,7 @@ export async function GET() {
       user_id: string; email: string; display_name: string | null; referral_code: string;
       commission_percent: number; commission_model: string; click_reward_paise: number; affiliate_status: string; affiliate_type: string; website_url: string | null;
       postback_url: string | null; postback_method: AffiliatePostbackMethod | null;
-      created_at: Date | string; referral_count: number; converted_count: number; click_count: number; billable_click_count: number;
+      created_at: Date | string; referral_count: number; converted_count: number; click_count: number; billable_click_count: number; non_billable_click_count: number;
     }>>(
       `SELECT u.id AS user_id, u.email, u.display_name, ap.referral_code, ap.commission_percent,
               ap.commission_model, ap.click_reward_paise, ap.status AS affiliate_status, ap.affiliate_type, ap.website_url,
@@ -207,7 +207,8 @@ export async function GET() {
                 WHERE ar.affiliate_user_id = ap.user_id AND ar.status = 'qualified'
                   AND COALESCE(p.paid_at, p.created_at) >= ar.created_at) AS converted_count,
               (SELECT COUNT(*) FROM affiliate_clicks c WHERE c.affiliate_user_id = ap.user_id) AS click_count,
-              (SELECT COUNT(*) FROM affiliate_clicks c WHERE c.affiliate_user_id = ap.user_id AND c.is_billable = 1) AS billable_click_count
+              (SELECT COUNT(*) FROM affiliate_clicks c WHERE c.affiliate_user_id = ap.user_id AND c.is_billable = 1) AS billable_click_count,
+              (SELECT COUNT(*) FROM affiliate_clicks c WHERE c.affiliate_user_id = ap.user_id AND c.is_billable = 0) AS non_billable_click_count
          FROM affiliate_profiles ap
          JOIN users u ON u.id = ap.user_id
         WHERE u.account_role = 'affiliate'
@@ -285,7 +286,7 @@ export async function GET() {
         postbackConfigured: Boolean(row.postback_url), postbackSecret,
         commissionPercent: Number(row.commission_percent), commissionModel: row.commission_model || 'plan_purchase',
         clickReward: Number(row.click_reward_paise || 0) / 100, status: row.affiliate_status, createdAt: row.created_at,
-        clickCount: Number(row.click_count || 0), billableClickCount: Number(row.billable_click_count || 0), referralCount: Number(row.referral_count || 0),
+        clickCount: Number(row.click_count || 0), billableClickCount: Number(row.billable_click_count || 0), nonBillableClickCount: Number(row.non_billable_click_count || 0), referralCount: Number(row.referral_count || 0),
         convertedCount: Number(row.converted_count || 0), commissionByCurrency: totalsMap.get(row.user_id) || [],
         referralUrl: buildAffiliateReferralUrl(row.referral_code),
       };

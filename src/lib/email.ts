@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { getAppOrigin } from '@/lib/app-origin';
 
 interface EmailResult {
   sent: true;
@@ -90,7 +91,7 @@ async function sendAuthEmail(input: OutgoingEmail): Promise<EmailResult> {
 }
 
 function getAppUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+  return getAppOrigin();
 }
 
 export async function sendVerificationEmail(email: string, token: string): Promise<EmailResult> {
