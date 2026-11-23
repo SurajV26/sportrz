@@ -1,6 +1,7 @@
 // src/app/profile/page.tsx
 'use client';
 import RecentlyPlayedGames from '@/components/RecentlyPlayedGames';
+import ProfilePassword from '@/components/auth/ProfilePassword';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -313,7 +314,7 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
-          {/* Add this after the existing profile content, before the closing </div> */}
+          <ProfilePassword key={currentUser.uid} />
 <div className="mt-8">
   <RecentlyPlayedGames />
 </div>

@@ -1,7 +1,7 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/mysql';
-import { hashOneTimeToken } from '@/lib/session';
+import { getCurrentUser, hashOneTimeToken } from '@/lib/session';
 import { isOtpEmailConfigured, sendLoginOtpEmail } from '@/lib/email';
 
 export const runtime = 'nodejs';
@@ -13,7 +13,11 @@ const OTP_LIFETIME_MINUTES = 10;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const email = String(body.email || '').trim().toLowerCase();
+    const resetting = body.purpose === 'password_reset';
+    const user = resetting ? await getCurrentUser() : null;
+    if (resetting && !user) return NextResponse.json({ error: 'Sign in to change your password.' }, { status: 401 });
+    const purpose = resetting ? 'password_reset' : 'login_otp';
+    const email = user?.email || String(body.email || '').trim().toLowerCase();
 
     if (email.length > 191 || !EMAIL_PATTERN.test(email)) {
       return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
@@ -35,11 +39,11 @@ export async function POST(request: NextRequest) {
     const [recentRows] = await pool.execute<any[]>(
       `SELECT GREATEST(1, ? - TIMESTAMPDIFF(SECOND, created_at, CURRENT_TIMESTAMP())) AS retry_after
          FROM auth_tokens
-        WHERE email = ? AND purpose = 'login_otp' AND used_at IS NULL
+        WHERE email = ? AND purpose = ? AND used_at IS NULL
           AND created_at >= DATE_SUB(CURRENT_TIMESTAMP(), INTERVAL 60 SECOND)
           AND created_at <= CURRENT_TIMESTAMP()
         ORDER BY created_at DESC, id DESC LIMIT 1`,
-      [OTP_COOLDOWN_SECONDS, email],
+      [OTP_COOLDOWN_SECONDS, email, purpose],
     );
 
     if (recentRows.length) {
@@ -53,8 +57,8 @@ export async function POST(request: NextRequest) {
     // Invalidate older codes so only the most recently issued code can be used.
     await pool.execute(
       `UPDATE auth_tokens SET used_at = UTC_TIMESTAMP()
-        WHERE email = ? AND purpose = 'login_otp' AND used_at IS NULL`,
-      [email],
+        WHERE email = ? AND purpose = ? AND used_at IS NULL`,
+      [email, purpose],
     );
 
     const otp = String(randomInt(0, 1_000_000)).padStart(6, '0');
@@ -63,14 +67,14 @@ export async function POST(request: NextRequest) {
     const placeholderHash = hashOneTimeToken(randomUUID());
     const [insertResult] = await pool.execute<any>(
       `INSERT INTO auth_tokens (user_id, email, purpose, token_hash, attempts, expires_at, created_at)
-       VALUES (NULL, ?, 'login_otp', ?, 0, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ${OTP_LIFETIME_MINUTES} MINUTE), CURRENT_TIMESTAMP())`,
-      [email, placeholderHash],
+       VALUES (?, ?, ?, ?, 0, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ${OTP_LIFETIME_MINUTES} MINUTE), CURRENT_TIMESTAMP())`,
+      [user?.uid ?? null, email, purpose, placeholderHash],
     );
-    const tokenHash = hashOneTimeToken(`${insertResult.insertId}:${email}:${otp}`);
+    const tokenHash = hashOneTimeToken(`${resetting ? 'profile-reset:' : ''}${insertResult.insertId}:${email}:${otp}`);
     await pool.execute('UPDATE auth_tokens SET token_hash = ? WHERE id = ?', [tokenHash, insertResult.insertId]);
 
     try {
-      await sendLoginOtpEmail(email, otp);
+      await sendLoginOtpEmail(email, otp, resetting);
       return NextResponse.json({
         success: true,
         message: 'Your 6-digit code has been emailed to you. It expires in 10 minutes.',
@@ -79,9 +83,12 @@ export async function POST(request: NextRequest) {
     } catch (emailError) {
       await pool.execute(
         `UPDATE auth_tokens SET used_at = UTC_TIMESTAMP()
-          WHERE email = ? AND purpose = 'login_otp' AND token_hash = ? AND used_at IS NULL`,
-        [email, tokenHash],
+          WHERE email = ? AND purpose = ? AND token_hash = ? AND used_at IS NULL`,
+        [email, purpose, tokenHash],
       );
+      if (resetting) {
+        return NextResponse.json({ error: 'Unable to send the password reset code. Please try again.' }, { status: 502 });
+      }
       throw emailError;
     }
   } catch (error) {

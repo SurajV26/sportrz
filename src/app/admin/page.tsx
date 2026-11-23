@@ -1242,7 +1242,7 @@ export default function AdminPanel() {
               e.preventDefault();
               const body = editingUser
                 ? { displayName: userForm.displayName }
-                : userForm;
+                : { ...userForm, password: new FormData(e.currentTarget).get("password") };
               const url = editingUser
                 ? `/api/admin/users/${encodeURIComponent(editingUser.id)}`
                 : "/api/admin/users";
@@ -1252,7 +1252,7 @@ export default function AdminPanel() {
                 body,
                 editingUser
                   ? "User profile updated."
-                  : "User created. They can verify their email with OTP.",
+                  : "User account created.",
               );
               if (ok) {
                 setShowUserModal(false);
@@ -1269,7 +1269,7 @@ export default function AdminPanel() {
                 <p className="mt-1 text-sm text-slate-500">
                   {editingUser
                     ? "Update the display name. Email and account role are managed separately."
-                    : "Creates an unverified user account. The user signs in by verifying an email OTP."}
+                    : "Set a password to enable password and email OTP login. Leave it blank for OTP-only login."}
                 </p>
               </div>
               <button
@@ -1312,6 +1312,18 @@ export default function AdminPanel() {
                   placeholder="Player name"
                 />
               </Field>
+              {!editingUser && (
+                <Field label="Password (optional, 6–12 characters)">
+                  <input
+                    type="password"
+                    name="password"
+                    autoComplete="new-password"
+                    pattern=".{6,12}"
+                    title="Enter 6–12 characters or leave blank for email OTP."
+                    className={inputClass}
+                  />
+                </Field>
+              )}
             </div>
             <div className="mt-6 flex justify-end gap-2">
               <button
