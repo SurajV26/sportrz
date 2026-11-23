@@ -42,7 +42,9 @@ const QA_TEST_ACCOUNTS = [
 export default function EmailOtpAuth() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
-  const [step, setStep] = useState<"email" | "otp">("email");
+  const [step, setStep] = useState<"email" | "method" | "customer-password" | "otp">("email");
+  const [account, setAccount] = useState({ exists: false, hasPassword: false });
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -59,6 +61,7 @@ export default function EmailOtpAuth() {
     requestLoginOtp,
     verifyLoginOtp,
     loginWithPassword,
+    authenticateWithPassword,
     currentUser,
     loading: authLoading,
   } = useAuth();
@@ -108,6 +111,55 @@ export default function EmailOtpAuth() {
     return () => window.clearTimeout(timer);
   }, [resendSeconds]);
 
+  const changeEmail = () => {
+    setStep("email");
+    setPassword("");
+    setOtp("");
+    setError("");
+    setNotice("");
+    setAccount({ exists: false, hasPassword: false });
+  };
+
+  const checkEmail = async (event: FormEvent) => {
+    event.preventDefault();
+    if (loading) return;
+    setLoading(true);
+    setError("");
+    try {
+      const normalized = email.trim().toLowerCase();
+      const response = await fetch('/api/auth/email-options', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalized }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to check your email.');
+      setEmail(normalized);
+      setAccount({ exists: Boolean(data.exists), hasPassword: Boolean(data.hasPassword) });
+      setPassword("");
+      setStep("method");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to check your email.');
+    } finally { setLoading(false); }
+  };
+
+  const submitCustomerPassword = async (event: FormEvent) => {
+    event.preventDefault();
+    if (loading) return;
+    if (!account.exists && (Array.from(password).length < 6 || Array.from(password).length > 12)) {
+      setError('Create a password of 6–12 characters.');
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      await authenticateWithPassword(email, password, account.exists ? 'login' : 'register', referralCode || undefined, referralClickId || undefined);
+      setPassword("");
+      router.refresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to sign in.');
+    } finally { setLoading(false); }
+  };
+
   const sendCode = async (event?: FormEvent) => {
     event?.preventDefault();
     if (loading) return;
@@ -134,6 +186,7 @@ export default function EmailOtpAuth() {
       const result = await requestLoginOtp(normalizedEmail);
       setEmail(normalizedEmail);
       setStep("otp");
+      setPassword("");
       setOtp("");
       setNotice(result.message || "Your code is on its way. Check your inbox.");
       setResendSeconds(result.retryAfterSeconds);
@@ -273,7 +326,7 @@ export default function EmailOtpAuth() {
                 ? isDevelopment
                   ? "LOCAL TEST ACCESS"
                   : "LIVE QA ACCESS"
-                : "PASSWORD-FREE ACCESS"}
+                : "SIGN IN YOUR WAY"}
             </div>
             <h2 className="max-w-sm text-4xl font-black leading-[1.08] tracking-tight">
               {authMode === "password" ? (
@@ -291,8 +344,8 @@ export default function EmailOtpAuth() {
             </h2>
             <p className="mt-5 max-w-sm text-sm leading-7 text-white/80">
               {authMode === "password"
-                ? "Use your private QA usernames and passwords to test Super Admin, Sub Admin, User, and Affiliate roles without requesting OTPs. Normal customers still use email OTP."
-                : "Enter your email, verify one secure code, and jump straight into your games. No password to remember."}
+                ? "Use your private QA usernames and passwords to test account roles. Customers can choose password or email OTP."
+                : "Enter your email, then choose a password or a one-time email code."}
             </p>
 
             <div className="mt-8 grid grid-cols-2 gap-3">
@@ -312,12 +365,12 @@ export default function EmailOtpAuth() {
               <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
                 <ShieldCheck className="mb-3 h-6 w-6" />
                 <div className="text-sm font-bold">
-                  {authMode === "password" ? "QA only" : "Secure by code"}
+                  {authMode === "password" ? "QA only" : "Your choice"}
                 </div>
                 <div className="mt-1 text-xs text-white/70">
                   {authMode === "password"
                     ? "Restricted to test identities"
-                    : "One-time email OTP"}
+                    : "Password or email OTP"}
                 </div>
               </div>
             </div>
@@ -327,7 +380,7 @@ export default function EmailOtpAuth() {
             <LockKeyhole className="h-4 w-4" />{" "}
             {authMode === "password"
               ? "QA sign-in is available only when explicitly enabled by the site administrator."
-              : "Your code is private and expires in 10 minutes."}
+              : "Choose password or email OTP to continue."}
           </div>
         </aside>
 
@@ -371,16 +424,16 @@ export default function EmailOtpAuth() {
                 </span>
                 <span className="mx-1 h-px w-8 bg-slate-200 dark:bg-slate-700" />
                 <span
-                  className={`flex h-7 w-7 items-center justify-center rounded-full ${step === "otp" ? "bg-orange-600 text-white" : "bg-slate-100 text-slate-500 dark:bg-slate-800"}`}
+                  className={`flex h-7 w-7 items-center justify-center rounded-full ${step !== "email" ? "bg-orange-600 text-white" : "bg-slate-100 text-slate-500 dark:bg-slate-800"}`}
                 >
                   2
                 </span>
                 <span
                   className={
-                    step === "otp" ? "text-slate-800 dark:text-white" : ""
+                    step !== "email" ? "text-slate-800 dark:text-white" : ""
                   }
                 >
-                  Verify
+                  Sign in
                 </span>
               </div>
             )}
@@ -391,13 +444,17 @@ export default function EmailOtpAuth() {
                   : "Live QA account sign-in"
                 : step === "email"
                   ? "Let’s get you playing."
+                  : step === "method" ? "Choose how to sign in."
+                  : step === "customer-password" ? (account.exists ? "Enter your password." : "Create your password.")
                   : "Check your inbox."}
             </h1>
             <p className="mt-3 max-w-md text-sm leading-6 text-slate-600 dark:text-slate-300">
               {authMode === "password" ? (
                 "Select a QA role, enter the private password configured by your administrator, and sign in without OTP. Normal customer registration and OTP login remain unchanged."
               ) : step === "email" ? (
-                "Enter your email and we’ll send a 6-digit code. New to Sportrz? Your account will be created automatically after you verify it."
+                "Enter your email to continue. Then choose a password or email OTP."
+              ) : step === "method" || step === "customer-password" ? (
+                <><span className="font-semibold">{email}</span><br />{account.exists ? "Welcome back. Sign in with your password or email OTP." : "Create a password or verify your email with OTP to get started."}</>
               ) : (
                 <>
                   We sent a one-time code to{" "}
@@ -522,11 +579,11 @@ export default function EmailOtpAuth() {
               <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-300">
                 Private QA accounts only. Use the usernames and passwords
                 configured by the Sportrz administrator. Do not share these
-                credentials. Real customer sign-in continues to use email OTP.
+                credentials. Customers can use their password or email OTP.
               </p>
             </div>
           ) : authMode === "otp" && step === "email" ? (
-            <form onSubmit={sendCode} className="space-y-5">
+            <form onSubmit={checkEmail} className="space-y-5">
               <div>
                 <label
                   htmlFor="auth-email"
@@ -553,28 +610,62 @@ export default function EmailOtpAuth() {
               </div>
               <button
                 type="submit"
-                disabled={loading || resendSeconds > 0}
+                disabled={loading}
                 className="group flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#ff5526] to-[#ed3424] px-4 py-4 font-bold text-white shadow-lg shadow-orange-600/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-600/25 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
                 {loading ? (
                   <>
-                    <LoaderCircle className="h-5 w-5 animate-spin" /> Sending
-                    code…
+                    <LoaderCircle className="h-5 w-5 animate-spin" /> Checking
+                    email…
                   </>
-                ) : resendSeconds > 0 ? (
-                  <>Please wait {resendSeconds}s</>
                 ) : (
                   <>
-                    Email me a code{" "}
+                    Continue{" "}
                     <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
                   </>
                 )}
               </button>
               <p className="flex items-start justify-center gap-2 text-center text-xs leading-5 text-slate-500 dark:text-slate-400">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                No password and no separate account form. Your email is your
-                key.
+                Choose how to sign in on the next step.
               </p>
+            </form>
+          ) : authMode === "otp" && step === "method" ? (
+            <div className="space-y-4">
+              <button type="button" disabled={loading || (account.exists && !account.hasPassword)}
+                onClick={() => { setPassword(""); setError(""); setStep("customer-password"); }}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 px-4 py-4 font-bold text-white disabled:opacity-50">
+                <KeyRound className="h-5 w-5" />{account.exists ? "Login with password" : "Create password"}
+              </button>
+              {account.exists && !account.hasPassword && <p className="text-sm text-slate-500 dark:text-slate-400">This account has no password yet. Continue with email OTP.</p>}
+              <button type="button" disabled={loading || resendSeconds > 0} onClick={() => void sendCode()}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-orange-500 px-4 py-4 font-bold text-orange-600 disabled:opacity-50">
+                <Mail className="h-5 w-5" />{loading ? "Sending code…" : resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : "Login with OTP"}
+              </button>
+              <button type="button" disabled={loading} onClick={changeEmail} className="text-sm font-semibold text-slate-500">Change email</button>
+            </div>
+          ) : authMode === "otp" && step === "customer-password" ? (
+            <form onSubmit={submitCustomerPassword} className="space-y-5">
+              <div>
+                <label htmlFor="customer-password" className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">{account.exists ? "Password" : "Create password (6–12 characters)"}</label>
+                <input id="customer-password" name="password" type="password" required autoFocus
+                  autoComplete={account.exists ? "current-password" : "new-password"}
+                  maxLength={account.exists ? 128 : undefined}
+                  value={password} onChange={event => setPassword(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-slate-950 outline-none focus:border-orange-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                {!account.exists && <p className="mt-2 text-xs text-slate-500">Use any 6–12 characters. No OTP will be sent.</p>}
+              </div>
+              <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 px-4 py-4 font-bold text-white disabled:opacity-50">
+                {loading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <KeyRound className="h-5 w-5" />}
+                {loading ? "Signing in…" : account.exists ? "Login" : "Create account and login"}
+              </button>
+              <button type="button" disabled={loading || resendSeconds > 0} onClick={() => void sendCode()} className="w-full text-sm font-semibold text-orange-600 disabled:opacity-50">
+                {resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : account.exists ? "Forgot password? Login with OTP" : "Use email OTP instead"}
+              </button>
+              <div className="flex justify-between text-sm text-slate-500">
+                <button type="button" disabled={loading} onClick={() => { setPassword(""); setError(""); setStep("method"); }}>Back to options</button>
+                <button type="button" disabled={loading} onClick={changeEmail}>Change email</button>
+              </div>
             </form>
           ) : (
             <form onSubmit={verifyCode} className="space-y-5">
@@ -627,12 +718,7 @@ export default function EmailOtpAuth() {
               <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
                 <button
                   type="button"
-                  onClick={() => {
-                    setStep("email");
-                    setOtp("");
-                    setError("");
-                    setNotice("");
-                  }}
+                  onClick={changeEmail}
                   className="inline-flex items-center gap-1.5 font-semibold text-slate-600 transition hover:text-orange-600 dark:text-slate-300 dark:hover:text-orange-400"
                 >
                   <ArrowLeft className="h-4 w-4" /> Change email

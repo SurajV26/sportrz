@@ -4,6 +4,7 @@ import type { RowDataPacket } from 'mysql2/promise';
 import { getPool } from '@/lib/mysql';
 import { getAdminPrincipal, hasPermission } from '@/lib/admin-access';
 import { logAdminAction } from '@/lib/admin-audit';
+import { hashPassword } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -84,15 +85,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const email = String(body.email || '').trim().toLowerCase();
     const displayName = String(body.displayName || '').trim();
+    const password = body.password ?? '';
+    if (typeof password !== 'string' || (password && (Array.from(password).length < 6 || Array.from(password).length > 12))) {
+      return NextResponse.json({ error: 'Enter a password of 6–12 characters or leave it blank for email OTP.' }, { status: 400 });
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 191) return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
     if (displayName.length > 191) return NextResponse.json({ error: 'Display name must be 191 characters or fewer.' }, { status: 400 });
     const id = randomUUID();
     await getPool().execute(
-      `INSERT INTO users (id, email, display_name, is_admin, account_role, status, email_verified_at)
-       VALUES (?, ?, ?, 0, 'user', 'active', NULL)`, [id, email, displayName || email.split('@')[0]],
+      `INSERT INTO users (id, email, display_name, password_hash, is_admin, account_role, status, email_verified_at)
+       VALUES (?, ?, ?, ?, 0, 'user', 'active', NULL)`, [id, email, displayName || email.split('@')[0], password ? await hashPassword(password) : null],
     );
     await logAdminAction(actor.id, 'user.created', 'user', id, { email, displayName: displayName || null, createdByAdmin: true }, request);
-    return NextResponse.json({ success: true, userId: id, message: 'User created. They can activate their account by verifying an email OTP.' }, { status: 201 });
+    return NextResponse.json({ success: true, userId: id, message: password ? 'User created. They can sign in with their password or email OTP.' : 'User created. They can sign in with email OTP.' }, { status: 201 });
   } catch (error: any) {
     if (error?.code === 'ER_DUP_ENTRY') return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 });
     console.error('Admin user create failed:', error);

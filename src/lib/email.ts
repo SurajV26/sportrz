@@ -114,7 +114,12 @@ export async function sendPasswordResetEmail(email: string, token: string): Prom
   });
 }
 
-export async function sendLoginOtpEmail(email: string, otp: string): Promise<{ sent: true }> {
+export async function sendLoginOtpEmail(email: string, otp: string, resetting = false): Promise<{ sent: true }> {
+  if (resetting) {
+    const text = `Your Sportrz password reset code is ${otp}. It expires in 10 minutes and can be used once.`;
+    await sendAuthEmail({ to: email, subject: 'Sportrz password reset code', text, html: `<p>${text}</p>` });
+    return { sent: true };
+  }
   const subject = `${otp} is your Sportrz verification code`;
   const text = [
     'Your Sportrz verification code',

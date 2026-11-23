@@ -11,6 +11,7 @@ interface AuthContextType {
   requestLoginOtp: (email: string) => Promise<{ message: string; retryAfterSeconds: number }>;
   verifyLoginOtp: (email: string, otp: string, referralCode?: string, clickId?: string) => Promise<{ isNewUser: boolean }>;
   loginWithPassword: (usernameOrEmail: string, password: string) => Promise<void>;
+  authenticateWithPassword: (email: string, password: string, action: 'register' | 'login', referralCode?: string, clickId?: string) => Promise<void>;
   logout: () => Promise<void>;
   resendVerificationEmail: (email?: string) => Promise<string | null>;
   resetPassword: (email: string) => Promise<string | null>;
@@ -104,6 +105,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     showToast(data.message || 'Signed in successfully.', 'success', 4000);
   };
 
+  const authenticateWithPassword = async (email: string, password: string, action: 'register' | 'login', referralCode?: string, clickId?: string) => {
+    const response = await fetch('/api/auth/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, action, referralCode, clickId }),
+    });
+    const data = await readApiResponse(response);
+    await refreshUser();
+    showToast(data.message || 'You are now signed in.', 'success', 4000);
+  };
+
   const logout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
@@ -148,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     requestLoginOtp,
     verifyLoginOtp,
     loginWithPassword,
+    authenticateWithPassword,
     logout,
     resendVerificationEmail,
     resetPassword,
