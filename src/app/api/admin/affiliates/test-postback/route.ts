@@ -15,6 +15,9 @@ interface AffiliatePostbackProfile extends RowDataPacket {
   status: string;
   postback_url: string | null;
   postback_method: AffiliatePostbackMethod | null;
+  commission_model: 'plan_purchase' | 'pay_per_click';
+  commission_percent: number;
+  click_reward_paise: number;
 }
 
 export async function POST(request: NextRequest) {
@@ -32,7 +35,8 @@ export async function POST(request: NextRequest) {
 
     const [rows] = await getPool().execute<AffiliatePostbackProfile[]>(
       `SELECT ap.user_id, ap.referral_code, ap.affiliate_type, ap.status,
-              ap.postback_url, ap.postback_method
+              ap.postback_url, ap.postback_method, ap.commission_model,
+              ap.commission_percent, ap.click_reward_paise
          FROM affiliate_profiles ap
          JOIN users u ON u.id = ap.user_id
         WHERE ap.user_id = ? AND u.account_role = 'affiliate' AND u.status = 'active'
@@ -51,17 +55,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Save a postback destination URL in this affiliate profile before sending a test event.' }, { status: 409 });
     }
 
+    const isClickReward = profile.commission_model === 'pay_per_click';
+    const clickReward = (Number(profile.click_reward_paise || 0) / 100).toFixed(2);
     const payload = {
       event: 'test',
+      sample_event: isClickReward ? 'valid_click' : 'conversion',
+      earning_model: profile.commission_model,
+      commission_model: profile.commission_model,
       commission_id: `TEST-${randomBytes(5).toString('hex')}`,
       affiliate_code: profile.referral_code,
       click_id: `test_${randomBytes(12).toString('hex')}`,
-      order_id: `TEST-ORDER-${randomBytes(5).toString('hex').toUpperCase()}`,
-      payment_id: `TEST-PAYMENT-${randomBytes(5).toString('hex').toUpperCase()}`,
-      amount: '100.00',
+      order_id: isClickReward ? '' : `TEST-ORDER-${randomBytes(5).toString('hex').toUpperCase()}`,
+      payment_id: isClickReward ? '' : `TEST-PAYMENT-${randomBytes(5).toString('hex').toUpperCase()}`,
+      amount: isClickReward ? '0.00' : '100.00',
       currency: 'INR',
-      commission: '10.00',
-      commission_percent: '10.00',
+      commission: isClickReward ? clickReward : '10.00',
+      commission_percent: isClickReward ? '0.00' : Number(profile.commission_percent || 0).toFixed(2),
+      rate: isClickReward ? clickReward : Number(profile.commission_percent || 0).toFixed(2),
+      click_reward: isClickReward ? clickReward : '0.00',
       status: 'test',
       occurred_at: new Date().toISOString(),
     };

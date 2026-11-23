@@ -465,7 +465,7 @@ export async function PATCH(request: NextRequest) {
         ? (body.postbackUrl === undefined ? String(profile.postback_url || '') : String(body.postbackUrl || '').trim())
         : ''; // Clear the external destination when an admin changes this to an internal affiliate.
       const postbackUrl = normalizePostbackTemplate(rawPostbackUrl);
-      if (postbackUrl === null) return NextResponse.json({ error: 'Enter a valid public HTTPS postback URL. Supported macros include {click_id}, {order_id}, {payment_id}, {amount}, {currency}, and {commission}.' }, { status: 400 });
+      if (postbackUrl === null) return NextResponse.json({ error: 'Enter a valid public HTTPS postback URL. Supported macros include {event}, {earning_model}, {click_id}, {order_id}, {payment_id}, {amount}, {currency}, {commission}, and {rate}.' }, { status: 400 });
       if (postbackUrl) {
         await assertPublicPostbackUrl(postbackUrl);
         // Fail early in production rather than saving a destination that cannot
@@ -487,14 +487,15 @@ export async function PATCH(request: NextRequest) {
       );
 
       if (postbackUrl && affiliateStatus === 'active' && affiliateType === 'external_website') {
-        // Queue historical commissions that did not have an endpoint when first paid.
-        // The unique commission key ensures this cannot create duplicate deliveries.
+        // Queue historical plan-purchase and valid-click commissions that did
+        // not have an endpoint when they were created. One delivery per
+        // commission is enforced by uq_affiliate_postback_commission.
         await connection.execute(
           `INSERT IGNORE INTO affiliate_postback_deliveries
              (affiliate_user_id, commission_id, destination_url, http_method, status)
            SELECT ac.affiliate_user_id, ac.id, ?, ?, 'pending'
              FROM affiliate_commissions ac
-            WHERE ac.affiliate_user_id = ? AND ac.status <> 'reversed' AND ac.commission_model = 'plan_purchase' AND ac.payment_record_id IS NOT NULL`,
+            WHERE ac.affiliate_user_id = ? AND ac.status <> 'reversed'`,
           [postbackUrl, postbackMethod, userId],
         );
         await connection.execute(

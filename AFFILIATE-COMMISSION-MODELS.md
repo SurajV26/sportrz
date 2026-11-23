@@ -9,7 +9,7 @@ This project supports two administrator-controlled earning models. An affiliate 
 - Clicks and sign-ups are analytics only; they do not earn money in this model.
 - Example: a customer pays ₹1,000 for a plan and the admin rate is 10%. The commission is ₹100.
 - The commission row stores the payment record, order ID, payment ID, paid amount, percentage, commission amount and status.
-- For external website affiliates, an administrator-configured S2S destination can receive the signed purchase-conversion postback.
+- For external website affiliates, an administrator-configured S2S destination can receive a signed `conversion` postback.
 
 ## 2. Pay per valid click (CPC)
 
@@ -20,7 +20,8 @@ This project supports two administrator-controlled earning models. An affiliate 
 - A click reward is created immediately for an eligible billable click; a customer registration or plan purchase is not required.
 - Example: the admin sets ₹1.50 per valid click. 100 valid clicks produce ₹150 in click rewards. 20 repeat visits do not add another 20 rewards.
 - Click rewards are stored in `affiliate_commissions` with `commission_model = 'pay_per_click'`, the click record ID, fixed rate and reward amount. They have no customer payment/order record by design.
-- Purchase S2S postbacks are not created for CPC click-reward rows. Click rewards remain in the commission/payout ledger.
+- For an active external website affiliate with an administrator-configured S2S URL, each new valid-click reward queues a signed `valid_click` postback. The payload includes the Click ID and click reward; it has no sale amount, order ID, or payment ID.
+- Historical CPC commission rows are also queued when an admin saves the affiliate's S2S settings, using the same outbox and retry ledger as plan-purchase conversions.
 
 ## Valid-click policy and fraud limitations
 

@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { getPool } from '@/lib/mysql';
 import { getCurrentUser } from '@/lib/session';
-import { getAppOrigin } from '@/lib/app-origin';
+import { dispatchAffiliatePostbackDelivery, type AffiliatePostbackMethod } from '@/lib/affiliate-postback';
 
 export const runtime = 'nodejs';
 
@@ -12,6 +12,19 @@ const CLICK_ID_PATTERN = /^[A-Za-z0-9._~-]{1,191}$/;
 const VISITOR_COOKIE = 'sportrz_affiliate_visitor';
 const VISITOR_TOKEN_PATTERN = /^[a-f0-9]{48}$/i;
 const VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+
+function appOrigin(request: NextRequest): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      if (['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password) return parsed.origin;
+    } catch {
+      // Use the request origin in local development when no valid URL is configured.
+    }
+  }
+  return request.nextUrl.origin;
+}
 
 function utcDayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -89,7 +102,7 @@ export async function GET(
 ) {
   const { code: rawCode } = await context.params;
   const referralCode = String(rawCode || '').trim().toUpperCase();
-  const origin = getAppOrigin(request.nextUrl.origin);
+  const origin = appOrigin(request);
   const loginUrl = new URL('/login', origin);
 
   if (!/^[A-Z0-9-]{3,32}$/.test(referralCode)) {
@@ -108,8 +121,12 @@ export async function GET(
       referral_code: string;
       commission_model: 'plan_purchase' | 'pay_per_click';
       click_reward_paise: number;
+      affiliate_type: string;
+      postback_url: string | null;
+      postback_method: AffiliatePostbackMethod | null;
     }>>(
-      `SELECT ap.user_id, ap.referral_code, ap.commission_model, ap.click_reward_paise
+      `SELECT ap.user_id, ap.referral_code, ap.commission_model, ap.click_reward_paise,
+              ap.affiliate_type, ap.postback_url, ap.postback_method
          FROM affiliate_profiles ap
          JOIN users u ON u.id = ap.user_id
         WHERE ap.referral_code = ?
@@ -144,6 +161,7 @@ export async function GET(
     const connection: PoolConnection = await pool.getConnection();
     let clickRecordId = 0;
     let isBillable = false;
+    let clickPostbackDeliveryId: number | null = null;
     try {
       await connection.beginTransaction();
       const billableKey = createHash('sha256')
@@ -224,7 +242,7 @@ export async function GET(
       }
 
       if (isBillable && profile.commission_model === 'pay_per_click' && Number(profile.click_reward_paise) > 0) {
-        await connection.execute(
+        const [commissionInsert] = await connection.execute<ResultSetHeader>(
           `INSERT IGNORE INTO affiliate_commissions
              (affiliate_user_id, referred_user_id, payment_record_id, click_record_id,
               commission_model, amount_paise, commission_percent, rate_paise,
@@ -232,6 +250,22 @@ export async function GET(
            VALUES (?, NULL, NULL, ?, 'pay_per_click', 0, 0, ?, ?, 'pending', UTC_TIMESTAMP(), UTC_TIMESTAMP())`,
           [profile.user_id, clickRecordId, Number(profile.click_reward_paise), Number(profile.click_reward_paise)],
         );
+
+        const clickCommissionId = Number(commissionInsert.insertId || 0);
+        const hasExternalPostback = profile.affiliate_type === 'external_website'
+          && Boolean(profile.postback_url?.trim());
+
+        if (commissionInsert.affectedRows > 0 && clickCommissionId > 0 && hasExternalPostback) {
+          const [deliveryInsert] = await connection.execute<ResultSetHeader>(
+            `INSERT IGNORE INTO affiliate_postback_deliveries
+               (affiliate_user_id, commission_id, destination_url, http_method, status)
+             VALUES (?, ?, ?, ?, 'pending')`,
+            [profile.user_id, clickCommissionId, profile.postback_url, profile.postback_method || 'POST'],
+          );
+          if (deliveryInsert.affectedRows > 0 && deliveryInsert.insertId > 0) {
+            clickPostbackDeliveryId = Number(deliveryInsert.insertId);
+          }
+        }
       }
 
       await connection.commit();
@@ -240,6 +274,19 @@ export async function GET(
       throw error;
     } finally {
       connection.release();
+    }
+
+    // Dispatch the click reward only after the ledger and outbox row are committed.
+    // A partner outage must never block referral attribution or roll back the reward.
+    if (clickPostbackDeliveryId) {
+      const deliveryResult = await dispatchAffiliatePostbackDelivery(clickPostbackDeliveryId, profile.user_id)
+        .catch((error) => {
+          console.error('Affiliate click postback dispatch failed:', error);
+          return { sent: false, error: error instanceof Error ? error.message : 'Postback dispatch failed.' };
+        });
+      if (!deliveryResult.sent) {
+        console.warn('Affiliate click postback delivery failed:', deliveryResult.error || 'Unknown delivery error');
+      }
     }
 
     loginUrl.searchParams.set('ref', profile.referral_code);

@@ -29,15 +29,15 @@ The affiliate shares the `/r/:code` link as-is. They do not need to create or ed
 
 A click becomes a referred sign-up only after a new user registers. A test using an already-registered email will not create a second referral attribution.
 
-## 3. Payment and commission flow
+## 3. Commission and postback flow
 
-1. Sportrz creates the Razorpay order and keeps the authenticated user's referral association server-side.
-2. The payment is accepted only after Razorpay signature/payment verification or the Razorpay webhook confirms `captured`.
-3. `ensureAffiliateCommissionForPayment` creates one commission per captured payment using the referral's affiliate and commission rate.
-4. For an active external affiliate with an admin-configured destination, Sportrz creates an outbox row in `affiliate_postback_deliveries`.
-5. The payment transaction is committed before network delivery. A partner outage never rolls back a captured customer payment.
+Sportrz supports both earning models and uses the same administrator-managed S2S destination for external website affiliates:
 
-Commission records and postback delivery records are separate: `affiliate_commissions` is the financial ledger; `affiliate_postback_deliveries` is the outbound HTTP delivery log.
+1. **Plan purchase:** a Razorpay payment is accepted only after signature/payment verification or the Razorpay webhook confirms `captured`. `ensureAffiliateCommissionForPayment` creates one commission per captured payment and queues a `conversion` event.
+2. **Pay per valid click:** the `/r/:code` route first validates and records the click. When a click is billable and a click-reward commission is inserted, the same transaction queues a `valid_click` event for an active external affiliate with a saved postback URL.
+3. The database transaction is committed before network delivery. The partner callback is then sent from the outbox. A partner outage never rolls back a click reward or a captured customer payment; a failed delivery remains in the retry ledger.
+
+Commission records and postback delivery records are separate: `affiliate_commissions` is the financial ledger; `affiliate_postback_deliveries` is the outbound HTTP delivery log. A valid-click postback does not require a customer registration or payment.
 
 ## 4. Configure the S2S destination (Super Admin only)
 
@@ -52,26 +52,34 @@ The affiliate marketer cannot view or edit the destination URL or signing secret
 
 ## 5. S2S payload and macros
 
-For `POST`, Sportrz sends JSON. A plain receiver URL such as `https://webhook.site/<unique-id>` is sufficient; URL macros are optional. The JSON body contains:
+For `POST`, Sportrz sends JSON. A plain receiver URL such as `https://webhook.site/<unique-id>` is sufficient; URL macros are optional.
+
+A plan-purchase event uses `event: "conversion"` and includes captured sale/order/payment details. A pay-per-click event uses `event: "valid_click"`; it includes the generated Click ID, `commission`, and `rate` / `click_reward`. Because CPC is not a sale, its `amount` is `"0.00"` and `order_id` / `payment_id` are empty strings.
+
+Example valid-click reward payload:
 
 ```json
 {
-  "event": "conversion",
-  "commission_id": "123",
+  "event": "valid_click",
+  "earning_model": "pay_per_click",
+  "commission_model": "pay_per_click",
+  "commission_id": "456",
   "affiliate_code": "SP-REFERRAL-CODE",
   "click_id": "clk_example",
-  "order_id": "order_example",
-  "payment_id": "pay_example",
-  "amount": "100.00",
+  "order_id": "",
+  "payment_id": "",
+  "amount": "0.00",
   "currency": "INR",
   "commission": "10.00",
-  "commission_percent": "10.00",
+  "commission_percent": "0.00",
+  "rate": "10.00",
+  "click_reward": "10.00",
   "status": "pending",
-  "occurred_at": "2026-11-10T12:00:00.000Z"
+  "occurred_at": "2026-11-17T12:00:00.000Z"
 }
 ```
 
-If the partner requires values in the URL, supported macros are `{affiliate_code}`, `{click_id}`, `{order_id}`, `{payment_id}`, `{amount}`, `{currency}`, `{commission}`, `{commission_percent}`, `{commission_id}`, and `{status}`. Sportrz URL-encodes substituted values. `GET` exists only as a compatibility option; use `POST` for new integrations.
+If the partner requires values in the URL, supported macros are `{event}`, `{earning_model}`, `{commission_model}`, `{affiliate_code}`, `{click_id}`, `{order_id}`, `{payment_id}`, `{amount}`, `{currency}`, `{commission}`, `{commission_percent}`, `{commission_id}`, `{status}`, `{rate}`, and `{click_reward}`. Sportrz URL-encodes substituted values. `GET` exists only as a compatibility option; use `POST` for new integrations.
 
 Every request includes:
 
@@ -88,7 +96,7 @@ Sportrz accepts only public HTTPS destinations on the standard port, resolves an
 
 - Failed and pending deliveries appear in the Super Admin commission ledger with attempts, HTTP status, and the last error.
 - Super Admin can retry a delivery from the ledger.
-- When an S2S URL is first configured, eligible historical commission entries are queued once; they can then be retried from the ledger.
+- When an S2S URL is first configured or saved again, eligible historical plan-purchase and valid-click commission entries are queued once; pending/failed deliveries can then be retried from the admin ledger.
 - The affiliate's dashboard shows only that affiliate's own Click IDs, referrals, commissions, and read-only postback delivery history.
 - A test event is visible at the test receiver and in the admin audit log; it does not create a commission ledger row.
 

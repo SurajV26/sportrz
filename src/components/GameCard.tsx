@@ -29,7 +29,8 @@ export default function GameCard({ game }: GameCardProps) {
   };
 
   // Fallback image if the thumbnail fails to load
-  const fallbackImage = '/placeholder-game.webp'; // Create this in your public folder
+  // const fallbackImage = '/placeholder-game.webp';
+  const fallbackImage = '/Logo.pngenv';
   
   // Get the thumbnail based on game ID
   const getThumbnail = () => {
@@ -43,7 +44,8 @@ export default function GameCard({ game }: GameCardProps) {
   if (game.id === 'casual13') return '/thumbnails/6.jpg';
     
     // For all other games, use the database thumbnail
-    return game.thumbnail;
+    // return game.thumbnail;
+    return game.thumbnail?.trim() || fallbackImage;
   };
 
   return (
