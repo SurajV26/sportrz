@@ -824,16 +824,12 @@ export default function AdminPanel() {
                     </td>
                     {myAffiliate?.affiliate_type === "external_website" && (
                       <td className="px-4 py-3">
-                        {row.commissionModel === "pay_per_click" ? (
-                          <span className="text-xs text-slate-500">Not applicable to click rewards</span>
-                        ) : (
-                          <>
-                            <StatusPill value={row.postbackStatus || "not_configured"} />
-                            {row.postbackHttpStatus != null && (
-                              <div className="mt-1 text-[11px] text-slate-500">HTTP {row.postbackHttpStatus}</div>
-                            )}
-                          </>
-                        )}
+                        <>
+                          <StatusPill value={row.postbackStatus || "not_configured"} />
+                          {row.postbackHttpStatus != null && (
+                            <div className="mt-1 text-[11px] text-slate-500">HTTP {row.postbackHttpStatus}</div>
+                          )}
+                        </>
                       </td>
                     )}
                     <td className="whitespace-nowrap px-4 py-3 text-xs">
@@ -1990,16 +1986,16 @@ export default function AdminPanel() {
             <Copy className="h-4 w-4" /> Copy referral link
           </button>
         </div>
-        {myAffiliate?.affiliate_type === "external_website" && (myAffiliate?.commission_model || myAffiliate?.commissionModel) !== "pay_per_click" && (
+        {myAffiliate?.affiliate_type === "external_website" && (
           <div className="mb-7 rounded-2xl border border-slate-200 bg-white p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="font-bold text-slate-950">External conversion tracking</h3>
+                <h3 className="font-bold text-slate-950">External tracking &amp; S2S postbacks</h3>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
                   Sportrz generates first-party Click IDs and records attribution automatically. S2S endpoints and delivery retries are controlled by the Sportrz admin team.
                   {(myAffiliate?.commission_model || myAffiliate?.commissionModel) === "pay_per_click"
-                    ? " Your selected earning model pays valid clicks; it does not pay an additional plan-purchase commission."
-                    : " Your selected earning model pays a percentage of each eligible plan payment after Razorpay capture."}
+                    ? " Your selected earning model pays valid unique clicks; each click reward can also generate a signed S2S event."
+                    : " Your selected earning model pays a percentage of each eligible plan payment after Razorpay capture; each commission can generate a signed S2S event."}
                 </p>
               </div>
               <StatusPill value={affiliatePostback?.configured ? "configured" : "not configured"} />
@@ -2013,16 +2009,17 @@ export default function AdminPanel() {
               <div className="rounded-xl bg-slate-50 p-4">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">S2S postback</div>
                 <div className="mt-1 font-semibold text-slate-900">Managed by Sportrz</div>
-                <p className="mt-1 text-xs leading-5 text-slate-500">You do not need to enter a callback URL, copy a secret, or retry deliveries. {(myAffiliate?.commission_model || myAffiliate?.commissionModel) === "pay_per_click" ? "Click rewards are recorded internally; purchase commission postbacks are not created for this model." : "Verified plan-purchase commissions can generate signed S2S events."}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">You do not need to enter a callback URL, copy a secret, or retry deliveries. {(myAffiliate?.commission_model || myAffiliate?.commissionModel) === "pay_per_click" ? "Every accepted valid-click reward can generate a signed valid_click S2S event." : "Verified plan-purchase commissions can generate signed conversion S2S events."}</p>
               </div>
             </div>
             <div className="mt-5">
               <h4 className="font-semibold text-slate-900">Your postback delivery history</h4>
-              <p className="mt-1 text-xs text-slate-500">Read-only delivery log. Click-based rewards are shown in the commission ledger; this history is for purchase-conversion postbacks.</p>
+              <p className="mt-1 text-xs text-slate-500">Read-only delivery log for valid-click rewards and verified plan-purchase conversions.</p>
               <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
-                <table className="min-w-[880px] w-full text-left text-sm">
+                <table className="min-w-[980px] w-full text-left text-sm">
                   <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
                     <tr>
+                      <th className="px-3 py-3">Event</th>
                       <th className="px-3 py-3">Order ID</th>
                       <th className="px-3 py-3">Payment ID</th>
                       <th className="px-3 py-3">Click ID</th>
@@ -2035,6 +2032,7 @@ export default function AdminPanel() {
                   <tbody className="divide-y divide-slate-100">
                     {(affiliatePostback?.deliveries || []).map((delivery: AnyRecord) => (
                       <tr key={delivery.id}>
+                        <td className="px-3 py-3">{delivery.event === "valid_click" ? "Valid click" : "Plan purchase"}</td>
                         <td className="max-w-[160px] break-all px-3 py-3 font-mono text-xs">{delivery.orderId || "—"}</td>
                         <td className="max-w-[160px] break-all px-3 py-3 font-mono text-xs">{delivery.paymentId || "—"}</td>
                         <td className="max-w-[160px] break-all px-3 py-3 font-mono text-xs">{delivery.clickId || "—"}</td>
@@ -2046,10 +2044,8 @@ export default function AdminPanel() {
                     ))}
                     {!(affiliatePostback?.deliveries || []).length && (
                       <tr>
-                        <td colSpan={7} className="p-6 text-center text-sm text-slate-500">
-                          {(myAffiliate?.commission_model || myAffiliate?.commissionModel) === "pay_per_click"
-                            ? "No purchase-conversion postbacks are created for the pay-per-valid-click model. Your valid click rewards are listed in the commission ledger below."
-                            : "No S2S delivery has been logged yet. Purchase commissions remain available in the ledger below."}
+                        <td colSpan={8} className="p-6 text-center text-sm text-slate-500">
+                          No S2S delivery has been logged yet. Valid-click rewards and purchase commissions remain available in the commission ledger below.
                         </td>
                       </tr>
                     )}
@@ -2174,11 +2170,7 @@ export default function AdminPanel() {
                   </td>
                   {myAffiliate?.affiliate_type === "external_website" && (
                     <td className="px-4 py-3">
-                      {row.commissionModel === "pay_per_click" ? (
-                        <span className="text-xs text-slate-500">Not applicable to click rewards</span>
-                      ) : (
-                        <><StatusPill value={row.postbackStatus || "not_configured"} />{row.postbackHttpStatus != null && <div className="mt-1 text-xs text-slate-400">HTTP {row.postbackHttpStatus}</div>}</>
-                      )}
+                      <><StatusPill value={row.postbackStatus || "not_configured"} />{row.postbackHttpStatus != null && <div className="mt-1 text-xs text-slate-400">HTTP {row.postbackHttpStatus}</div>}</>
                     </td>
                   )}
                   <td className="whitespace-nowrap px-4 py-3 text-xs">
@@ -2663,8 +2655,8 @@ export default function AdminPanel() {
                       <h4 className="font-bold text-slate-900">Server-to-server (S2S) postback</h4>
                       <p className="mt-1 text-xs leading-5 text-slate-600">
                         {(editingAffiliate.editCommissionModel ?? editingAffiliate.commissionModel ?? "plan_purchase") === "pay_per_click"
-                          ? "This affiliate is currently paid per valid click. Purchase-commission postbacks are paused for new activity while this model is selected; existing purchase deliveries remain in the history."
-                          : "Configure the receiving HTTPS endpoint here. Sportrz sends a signed JSON POST after a verified captured plan payment. Affiliates cannot view or change this destination."}
+                          ? "Configure the receiving HTTPS endpoint here. Sportrz sends a signed JSON postback whenever a valid unique click creates a click-reward commission. Affiliates cannot view or change this destination."
+                          : "Configure the receiving HTTPS endpoint here. Sportrz sends a signed JSON POST after a verified captured plan payment creates a commission. Affiliates cannot view or change this destination."}
                       </p>
                     </div>
                     <StatusPill value={editingAffiliate.postbackConfigured ? "configured" : "not configured"} />
@@ -2692,8 +2684,8 @@ export default function AdminPanel() {
                     </Field>
                   </div>
                   <p className="mt-2 text-xs leading-5 text-slate-600">
-                    Supported URL macros: <code>{"{click_id}"}</code>, <code>{"{order_id}"}</code>, <code>{"{payment_id}"}</code>,
-                    <code>{"{amount}"}</code>, <code>{"{currency}"}</code>, <code>{"{commission}"}</code>, and <code>{"{affiliate_code}"}</code>.
+                    Supported URL macros: <code>{"{event}"}</code>, <code>{"{earning_model}"}</code>, <code>{"{click_id}"}</code>, <code>{"{order_id}"}</code>, <code>{"{payment_id}"}</code>,
+                    <code>{"{amount}"}</code>, <code>{"{currency}"}</code>, <code>{"{commission}"}</code>, <code>{"{rate}"}</code>, and <code>{"{affiliate_code}"}</code>.
                     For Webhook.site testing, paste its unique HTTPS URL and leave the method on POST.
                   </p>
                   <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
@@ -2800,15 +2792,11 @@ export default function AdminPanel() {
                     <StatusPill value={c.status} />
                   </td>
                   <td className="px-5 py-4">
-                    {c.commissionModel === "pay_per_click" ? (
-                      <span className="text-xs text-slate-500">Not applicable to click rewards</span>
-                    ) : (
-                      <>
-                        <StatusPill value={c.postbackStatus || "not_configured"} />
-                        <div className="mt-1 text-xs text-slate-500">{c.postbackAttempts || 0} attempt(s) · HTTP {c.postbackHttpStatus ?? "—"}</div>
-                      </>
-                    )}
-                    {c.commissionModel !== "pay_per_click" && c.postbackDeliveryId && ["pending", "failed"].includes(c.postbackStatus) && (
+                    <>
+                      <StatusPill value={c.postbackStatus || "not_configured"} />
+                      <div className="mt-1 text-xs text-slate-500">{c.postbackAttempts || 0} attempt(s) · HTTP {c.postbackHttpStatus ?? "—"}</div>
+                    </>
+                    {c.postbackDeliveryId && ["pending", "failed"].includes(c.postbackStatus) && (
                       <button
                         type="button"
                         className="mt-2 text-xs font-semibold text-orange-700 underline disabled:opacity-50"

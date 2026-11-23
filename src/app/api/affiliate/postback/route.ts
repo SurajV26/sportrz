@@ -26,15 +26,17 @@ export async function GET() {
     const [deliveries] = await getPool().execute<Array<RowDataPacket & {
       id: number; commission_id: number; status: string; attempt_count: number;
       http_status: number | null; last_error: string | null; sent_at: Date | string | null;
-      created_at: Date | string; order_id: string; provider_payment_id: string | null;
-      commission_paise: number; currency: string; click_id: string | null;
+      created_at: Date | string; order_id: string | null; provider_payment_id: string | null;
+      commission_paise: number; currency: string | null; click_id: string | null; commission_model: string;
     }>>(
       `SELECT d.id, d.commission_id, d.status, d.attempt_count, d.http_status,
               d.last_error, d.sent_at, d.created_at, p.order_id, p.provider_payment_id,
-              ac.commission_paise, p.currency, ar.click_id
+              ac.commission_paise, p.currency, ac.commission_model,
+              COALESCE(c.click_id, ar.click_id) AS click_id
          FROM affiliate_postback_deliveries d
          JOIN affiliate_commissions ac ON ac.id = d.commission_id
-         JOIN payments p ON p.id = ac.payment_record_id
+         LEFT JOIN payments p ON p.id = ac.payment_record_id
+         LEFT JOIN affiliate_clicks c ON c.id = ac.click_record_id
          LEFT JOIN affiliate_referrals ar
            ON ar.referred_user_id = ac.referred_user_id AND ar.affiliate_user_id = d.affiliate_user_id
         WHERE d.affiliate_user_id = ?
@@ -49,9 +51,10 @@ export async function GET() {
       managedBy: 'Sportrz admin',
       deliveries: deliveries.map((row) => ({
         id: Number(row.id), commissionId: Number(row.commission_id), status: row.status,
+        event: row.commission_model === 'pay_per_click' ? 'valid_click' : 'conversion',
         attempts: Number(row.attempt_count || 0), httpStatus: row.http_status == null ? null : Number(row.http_status),
         lastError: row.last_error, sentAt: row.sent_at, createdAt: row.created_at,
-        orderId: row.order_id, paymentId: row.provider_payment_id,
+        orderId: row.order_id || '', paymentId: row.provider_payment_id || '',
         commission: Number(row.commission_paise || 0) / 100, currency: row.currency || 'INR',
         clickId: row.click_id || '',
       })),

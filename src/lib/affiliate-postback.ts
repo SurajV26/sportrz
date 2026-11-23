@@ -12,6 +12,7 @@ export type AffiliatePostbackPayload = Record<string, string | number>;
 const ALLOWED_MACROS = new Set([
   'affiliate_code', 'click_id', 'order_id', 'payment_id', 'amount', 'currency',
   'commission', 'commission_percent', 'commission_id', 'status',
+  'event', 'earning_model', 'commission_model', 'rate', 'click_reward',
 ]);
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 4_000;
@@ -240,15 +241,18 @@ interface DeliveryRow extends RowDataPacket {
   commission_id: number;
   destination_url: string;
   http_method: AffiliatePostbackMethod;
+  commission_model: 'plan_purchase' | 'pay_per_click';
   commission_status: string;
   commission_paise: number;
   commission_percent: number;
+  rate_paise: number | null;
   amount_paise: number;
-  currency: string;
-  order_id: string;
+  currency: string | null;
+  order_id: string | null;
   provider_payment_id: string | null;
   paid_at: Date | string | null;
-  payment_created_at: Date | string;
+  payment_created_at: Date | string | null;
+  commission_created_at: Date | string;
   referral_code: string;
   click_id: string | null;
 }
@@ -279,14 +283,16 @@ export async function dispatchAffiliatePostbackDelivery(
   try {
     const [rows] = await pool.execute<DeliveryRow[]>(
       `SELECT d.id, d.affiliate_user_id, d.commission_id, d.destination_url, d.http_method,
-              ac.status AS commission_status, ac.commission_paise, ac.commission_percent, ac.amount_paise,
+              ac.commission_model, ac.status AS commission_status, ac.commission_paise,
+              ac.commission_percent, ac.rate_paise, ac.amount_paise, ac.created_at AS commission_created_at,
               p.currency, p.order_id, p.provider_payment_id, p.paid_at, p.created_at AS payment_created_at,
-              ap.referral_code, ar.click_id
+              ap.referral_code, COALESCE(c.click_id, ar.click_id) AS click_id
          FROM affiliate_postback_deliveries d
          JOIN affiliate_commissions ac ON ac.id = d.commission_id
-         JOIN payments p ON p.id = ac.payment_record_id
+         LEFT JOIN payments p ON p.id = ac.payment_record_id
          JOIN affiliate_profiles ap ON ap.user_id = d.affiliate_user_id
          JOIN users au ON au.id = ap.user_id AND au.account_role = 'affiliate' AND au.status = 'active'
+         LEFT JOIN affiliate_clicks c ON c.id = ac.click_record_id
          LEFT JOIN affiliate_referrals ar
            ON ar.referred_user_id = ac.referred_user_id AND ar.affiliate_user_id = d.affiliate_user_id
         WHERE d.id = ? AND d.affiliate_user_id = ?
@@ -297,21 +303,30 @@ export async function dispatchAffiliatePostbackDelivery(
     if (!delivery) throw new Error('The postback delivery is missing its commission, payment, or affiliate profile.');
     if (!delivery.destination_url) throw new Error('No external postback URL is configured for this affiliate.');
 
+    const isClickReward = delivery.commission_model === 'pay_per_click';
+    const earningRate = isClickReward
+      ? (Number(delivery.rate_paise || 0) / 100).toFixed(2)
+      : Number(delivery.commission_percent || 0).toFixed(2);
+    const occurredAt = delivery.paid_at || delivery.payment_created_at || delivery.commission_created_at;
     const payload: AffiliatePostbackPayload = {
-      event: 'conversion',
+      event: isClickReward ? 'valid_click' : 'conversion',
+      earning_model: delivery.commission_model,
+      commission_model: delivery.commission_model,
       commission_id: String(delivery.commission_id),
       affiliate_code: delivery.referral_code,
       click_id: delivery.click_id || '',
-      order_id: delivery.order_id,
+      order_id: delivery.order_id || '',
       payment_id: delivery.provider_payment_id || '',
-      amount: (Number(delivery.amount_paise || 0) / 100).toFixed(2),
+      // CPC is a click reward, not a sale. Keep sale amount at zero and send
+      // the per-click rate separately so partner trackers do not treat it as revenue.
+      amount: isClickReward ? '0.00' : (Number(delivery.amount_paise || 0) / 100).toFixed(2),
       currency: delivery.currency || 'INR',
       commission: (Number(delivery.commission_paise || 0) / 100).toFixed(2),
       commission_percent: Number(delivery.commission_percent || 0).toFixed(2),
+      rate: earningRate,
+      click_reward: isClickReward ? earningRate : '0.00',
       status: delivery.commission_status,
-      occurred_at: delivery.paid_at
-        ? new Date(delivery.paid_at).toISOString()
-        : new Date(delivery.payment_created_at).toISOString(),
+      occurred_at: occurredAt instanceof Date ? occurredAt.toISOString() : new Date(occurredAt).toISOString(),
     };
 
     const response = await sendAffiliatePostbackEvent({
